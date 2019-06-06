@@ -29,14 +29,12 @@ labels = pd.read_csv(root_dir+'labels.csv')
 df_train = pd.read_csv(root_dir+'train.csv')
 df_sub = pd.read_csv(root_dir+'sample_submission.csv')
 
-
 #df_train = df_train[0: 10000]
 
 print(labels.head())
 print(df_train.head())
 print(df_sub.head())
 print(labels.shape[0])
-
 
 threshold = 0.1
 lr = 2e-4
@@ -115,7 +113,6 @@ model = vision.models.resnet50() #pretrained=True
 #model = vision.models.densenet121()
 #model = vision.models.resnet101()
 
-
 model.fc = torch.nn.Sequential(
     torch.nn.Dropout2d(0.1),
     torch.nn.Linear(
@@ -154,12 +151,10 @@ model = model.cuda()
 
 # optim
 opt = torch.optim.Adam(model.parameters(), lr = lr, weight_decay=1e-4)
-#opt = torch.optim.Adam(model.parameters(), lr = lr, weight_decay=1e-4)
 #opt = torch.optim.SGD(model.parameters(), 1e-2, weight_decay=1e-4, momentum=0.9)
 
 sched = torch.optim.lr_scheduler.StepLR(opt, [30, 80])
 #sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max = 5)
-
 
 def f2_score(y_true, y_pred, threshold):
     return fbeta_score(y_true, y_pred, beta=2, average='samples')
