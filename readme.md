@@ -16,3 +16,12 @@ search.py - одна из заданных курсовых работ.
 
 **Результат работы для изображения**
 ![Test image](IMG_20190508_125437.jpg)
+
+Команда
+py .\search.py --images ./train2017 --image ./IMG_20190508_125437.jpg --k 5
+
+![image 1](im1.png)
+![image 2](im2.png)
+![image 3](im3.png)
+![image 4](im4.png)
+![image 5](im5.png)
