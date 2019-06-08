@@ -1,5 +1,6 @@
 #modules
 import os
+import json
 from pathlib import Path
 
 import argparse
@@ -18,7 +19,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import scipy.spatial.distance
 
-#py .\search.py --images ./train2017 --image 000000340727.jpg --k 5
+#py .\search.py --images ./train2017 --image ./train2017/000000340727.jpg --k 5
 
 # prarse options
 parser = argparse.ArgumentParser()
@@ -35,7 +36,7 @@ k = int(opts.k)
 torch.cuda.init()
 
 train_files = pd.DataFrame({'images':os.listdir(images)})
-#train_files = train_files[0:600]
+#train_files = train_files[0:100]
 print(train_files.shape)
 
 # define helpers
@@ -48,10 +49,21 @@ class Img(object):
         file = self._path / image_file
         img = Image.open(file).convert('RGB')
         plt.imshow(img)
+        plt.show()
         
     def transform(self, image_file):
         file = self._path / image_file
         img = Image.open(file).convert('RGB')
+        img = self._transform(img)
+        return img
+
+    def showTest(self, image_file):
+        img = Image.open(image_file).convert('RGB')
+        plt.imshow(img)
+        plt.show()
+        
+    def transformTest(self, image_file):
+        img = Image.open(image_file).convert('RGB')
         img = self._transform(img)
         return img
 
@@ -72,52 +84,17 @@ class Dataset(torch.utils.data.Dataset):
         return (row.images, img)
 
 data_transforms = vision.transforms.Compose([
-    vision.transforms.Resize(32),
-    vision.transforms.CenterCrop(32),
+    vision.transforms.Resize(128),
+    vision.transforms.CenterCrop(128),
     vision.transforms.ToTensor(),
     vision.transforms.Normalize(
         [0.485, 0.456, 0.406], 
         [0.229, 0.224, 0.225])
 ])
 
-class Block(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.l = nn.Conv2d(in_channels, out_channels, 3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(2,2)
-        
-    def forward(self, input):
-        input = self.l(input)
-        input = torch.relu(input)
-        input = self.pool(input)
-        return input
-
-class Model(nn.Module):
-    def __init__(self):
-        super().__init__()
-        
-        self.blocks = nn.ModuleList([
-            Block(3, 8),
-            Block(8, 16),
-            Block(16, 32)
-        ])    
-        self.global_pool = nn.MaxPool2d(8,8)
-        
-    def forward(self, x):
-        for l in self.blocks:
-            x = l(x)
-        x = self.global_pool(x)       
-        x = x.view(x.shape[0], x.shape[1])
-        return x
-
-# x = torch.zeros((1, 3, 128, 128)) # one sample
-# model = Model()
-# y = model(x)
-# print(y.shape)
-
 def vectorize(model):
-    if os.path.isfile('./vectors.csv'):
-        vectors = pd.read_csv('./vectors.csv')
+    if os.path.isfile('./vectors.df'):
+        vectors = pd.read_pickle('./vectors.df')
     else:
         vectors = pd.DataFrame(columns=['image', 'vector'])
 
@@ -125,7 +102,7 @@ def vectorize(model):
                 train_files,
                 root_dir = Path(images),
                 transforms = data_transforms)
-        train_loader = torch.utils.data.DataLoader(dataset=train_dataset, shuffle = False, batch_size=128, drop_last=False)
+        train_loader = torch.utils.data.DataLoader(dataset=train_dataset, shuffle = False, batch_size=256, drop_last=False)
         b = 0
         with torch.no_grad():
             model.eval()
@@ -133,40 +110,43 @@ def vectorize(model):
                 items = items.cuda()              
                 y = model(items)
                 for i, l in enumerate(y):                
-                    vectors.loc[len(vectors)] = {'image':ims[i], 'vector':' '.join([str(i) for i in l.tolist()])}
+                    vectors.loc[len(vectors)] = {'image':ims[i], 'vector':l.cpu().numpy()}
                 if (not(b % 5)):
                     print('batch = {}'.format(b))
                 b = b + 1
-        vectors.to_csv('./vectors.csv', index=False)
-        
-    for i, l in enumerate(vectors.vector.values):
-        vectors.vector[i] =  [float(c) for c in l.split(' ')]
-        
+        vectors.to_pickle('./vectors.df')
     return vectors
 
 im = Img(path = Path(images), transforms = data_transforms)
 
-model = Model().cuda()
+model = vision.models.resnet50(pretrained = True)
+model.fc =nn.Sequential()
+model.cuda()
+model.eval()
+
+# x = torch.zeros((1, 3, 32, 32)) # one sample
+# # model = Model()
+# y = model(x)
+# print(y.shape)
+
 vectors = vectorize(model)
 
 print('Test image ', image)
-im.show(image)
+im.showTest(image)
 
-img = im.transform(image)
+img = im.transformTest(image)
 img = img.unsqueeze(0)
 img = img.cuda()
 y = model(img) 
 y = y.cpu().detach().numpy()[0]
 
-print('Similar imagees ', image)
 dist = pd.DataFrame(columns=['image', 'dist']) 
 for i, v in enumerate(vectors.vector):
-    _dist = scipy.spatial.distance.cosine(y, v) 
+    _dist = scipy.spatial.distance.cosine(y, v)
     dist.loc[len(dist)] = {'image':vectors.image[i], 'dist':_dist}
 
 indexes = np.argsort(dist.dist.values)
 similar = [dist.image[i] for i in indexes[0:k]]
-print(similar)
 for i in similar:
     im.show(i)
     plt.show()
